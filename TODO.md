@@ -1,0 +1,3 @@
+- set token when writing upstart config for sshttp or write sshttp config file and read that when starting.
+- make an AMI that already has docker installed to make this faster. 
+- Sometimes VPC's dont make dns host names: http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/vpc-dns.html, should use the public IP or at least document it. 
