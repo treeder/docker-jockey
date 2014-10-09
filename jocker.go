@@ -35,6 +35,7 @@ type Options struct {
 	Verb goptions.Verbs
 	Run  struct {
 		Name        string `goptions:"--name, mutexgroup='input', obligatory, description='Container name'"`
+		D           bool   `goptions:"-d"`
 		Rm          bool   `goptions:"--rm"`
 		Interactive bool   `goptions:"-i, --interactive, description='Force removal'"`
 		Tty         bool   `goptions:"-t, --tty, description='Force removal'"`
@@ -129,9 +130,9 @@ func main() {
 			os.Exit(1)
 		}
 	}
-//	if true {
-//		os.Exit(1)
-//	}
+	//	if true {
+	//		os.Exit(1)
+	//	}
 
 	// Now we're running so let's upload script and run it! upload via sshttp
 	// http://stackoverflow.com/questions/20205796/golang-post-data-using-the-content-type-multipart-form-data
@@ -164,7 +165,7 @@ func main() {
 	log15.Info("Running script...")
 	v = url.Values{}
 	v.Set("token", options.SshttpToken)
-	v.Set("exec", "cd /jocker/script && docker run -it --rm --name yo -v \"$(pwd)\":/usr/src/myapp -w /usr/src/myapp ruby:2 bundle exec ruby yo.rb")
+	v.Set("exec", fmt.Sprintf("cd /jocker/script && docker run -it --rm --name yo -v \"$(pwd)\":/usr/src/myapp -w /usr/src/myapp %v", commandString))
 	resp, err = http.Post(sshttpUrl(instance, "/v1/shell", v), "application/json", strings.NewReader("{}"))
 	if err != nil {
 		log15.Crit("Couldn't run script in docker!", "error", err)
