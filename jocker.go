@@ -105,16 +105,33 @@ func main() {
 	}
 	log15.Info("Tar ran", "output", string(out))
 
-	instance, err := LaunchServer(options, options.Run.Name)
+	e, err := GetEc2(options)
 	if err != nil {
-		log15.Crit("Instance failed to launch", "error", err)
-		os.Exit(1)
+		return
 	}
-	cluster.AddInstance(Instance{Name: options.Run.Name})
-	err = cluster.Save()
-	if err != nil {
-		os.Exit(1)
+
+	// Check if server already exists/running
+	var instance ec2.Instance
+	if cluster.HasInstance(options.Run.Name) {
+		ins := cluster.GetInstance(options.Run.Name)
+		instance, err = GetInstanceInfo(e, ins.InstanceId)
+		log15.Info("Instance already exists", "id", instance)
+	} else {
+		log15.Info("Launching new instance...")
+		instance, err := LaunchServer(e, options, options.Run.Name)
+		if err != nil {
+			log15.Crit("Instance failed to launch", "error", err)
+			os.Exit(1)
+		}
+		cluster.AddInstance(Instance{Name: options.Run.Name, InstanceId: instance.InstanceId})
+		err = cluster.Save()
+		if err != nil {
+			os.Exit(1)
+		}
 	}
+//	if true {
+//		os.Exit(1)
+//	}
 
 	// Now we're running so let's upload script and run it! upload via sshttp
 	// http://stackoverflow.com/questions/20205796/golang-post-data-using-the-content-type-multipart-form-data
@@ -158,14 +175,28 @@ func main() {
 	log15.Info("Docker run", "output", string(body))
 
 }
-func LaunchServer(options Options, name string) (instance ec2.Instance, err error) {
 
+func GetEc2(options Options) (*ec2.EC2, error) {
 	auth, err := aws.GetAuth(options.AwsAccessKey, options.AwsSecretKey)
 	if err != nil {
 		log15.Crit("Error aws.GetAuth", "error", err)
-		return instance, err
+		return nil, err
 	}
 	e := ec2.New(auth, aws.USEast)
+	return e, nil
+}
+
+func GetInstanceInfo(e *ec2.EC2, instanceId string) (instance ec2.Instance, err error) {
+	iResp, err := e.Instances([]string{instanceId}, nil)
+	if err != nil {
+		log15.Crit("Couldn't get instance details", "error", err)
+		return instance, err
+	}
+	instance = iResp.Reservations[0].Instances[0]
+	return instance, err
+}
+
+func LaunchServer(e *ec2.EC2, options Options, name string) (instance ec2.Instance, err error) {
 
 	//	userData := []byte(`#cloud-config
 	//runcmd:
@@ -214,12 +245,11 @@ L:
 	for {
 		select {
 		case <-ticker.C:
-			iResp, err := e.Instances([]string{resp.Instances[0].InstanceId}, nil)
+			instance, err = GetInstanceInfo(e, resp.Instances[0].InstanceId)
 			if err != nil {
-				log15.Crit("Couldn't get instance details", "error", err)
+				log15.Crit("Error getting instance info", "error", err)
 				os.Exit(1)
 			}
-			instance = iResp.Reservations[0].Instances[0]
 			if checkIfUp(instance) {
 				ok = true
 				break L

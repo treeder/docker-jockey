@@ -43,6 +43,19 @@ func (c *Cluster) AddInstance(i Instance) {
 	c.Instances = append(c.Instances, i)
 }
 
+func (c *Cluster) GetInstance(name string) *Instance {
+	for _, v := range c.Instances {
+		if v.Name == name {
+			return &v
+		}
+	}
+	return nil
+}
+
+func (c *Cluster) HasInstance(name string) bool {
+	return c.GetInstance(name) != nil
+}
+
 func (c *Cluster) Save() error {
 	b, err := json.Marshal(c)
 	if err != nil {
