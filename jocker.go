@@ -34,8 +34,10 @@ type Options struct {
 
 	Verb goptions.Verbs
 	Run  struct {
+		// todo: should allow an isntance name to allow multiple containers on one instance (default is name already)
 		Name        string `goptions:"--name, mutexgroup='input', obligatory, description='Container name'"`
 		D           bool   `goptions:"-d"`
+		Port        string   `goptions:"-p, description='Port setup, eg: 0.0.0.0:8080:8080'"`
 		Rm          bool   `goptions:"--rm"`
 		Interactive bool   `goptions:"-i, --interactive, description='Force removal'"`
 		Tty         bool   `goptions:"-t, --tty, description='Force removal'"`
@@ -113,11 +115,23 @@ func main() {
 
 	// Check if server already exists/running
 	var instance ec2.Instance
+	instOk := false
 	if cluster.HasInstance(options.Run.Name) {
 		ins := cluster.GetInstance(options.Run.Name)
 		instance, err = GetInstanceInfo(e, ins.InstanceId)
-		log15.Info("Instance already exists", "id", instance)
-	} else {
+		if err != nil {
+			log15.Warn("Instance not on AWS anymore.", "id", ins.InstanceId)
+			cluster.RemoveInstance(options.Run.Name)
+		} else {
+			if instance.State.Code == 16 { // running code: http://docs.aws.amazon.com/AWSEC2/latest/APIReference/ApiReference-ItemType-InstanceStateType.html
+				instOk = true
+				log15.Info("Instance already exists, using it.", "id", instance)
+			} else {
+				log15.Warn("Instance no longer in running state")
+			}
+		}
+	}
+	if !instOk {
 		log15.Info("Launching new instance...")
 		instance, err = LaunchServer(e, options, options.Run.Name)
 		if err != nil {
@@ -125,10 +139,11 @@ func main() {
 			os.Exit(1)
 		}
 		cluster.AddInstance(Instance{Name: options.Run.Name, InstanceId: instance.InstanceId})
-		err = cluster.Save()
-		if err != nil {
-			os.Exit(1)
-		}
+
+	}
+	err = cluster.Save()
+	if err != nil {
+		os.Exit(1)
 	}
 	//	if true {
 	//		os.Exit(1)
@@ -148,33 +163,38 @@ func main() {
 	}
 
 	// untar
-	v = url.Values{}
-	log15.Info("Unpacking script...")
-	v.Set("token", options.SshttpToken)
-	v.Set("exec", "cd /jocker && mkdir script && tar -xf script.tar.gz --strip 1 --directory script")
-	resp, err := http.Post(sshttpUrl(instance, "/v1/shell", v), "application/json", strings.NewReader("{}"))
+	cmd := "cd /jocker && mkdir script && tar -xf script.tar.gz --strip 1 --directory script"
+	output, err := remoteExec(options, instance, cmd)
 	if err != nil {
-		log15.Crit("Couldn't untar script", "error", err)
-		os.Exit(1)
+		// todo: ???
 	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body) // I think there's a better way to do this so it doesn't read it into memory, io.Copy into nil or something
-	log15.Info("Untar run", "output", string(body))
+	log15.Info("Untar run", "output", output)
 
 	// run the docker command! could setup an upstart script for it too if it's a service (optional)
 	log15.Info("Running script...")
-	v = url.Values{}
-	v.Set("token", options.SshttpToken)
-	v.Set("exec", fmt.Sprintf("cd /jocker/script && docker run -it --rm --name yo -v \"$(pwd)\":/usr/src/myapp -w /usr/src/myapp %v", commandString))
-	resp, err = http.Post(sshttpUrl(instance, "/v1/shell", v), "application/json", strings.NewReader("{}"))
+	cmd = fmt.Sprintf("docker stop %v ; docker rm %v ; cd /jocker/script && docker run -d --name %v -v /jocker/script:/usr/src/myapp -w /usr/src/myapp -p %v %v",
+		options.Run.Name, options.Run.Name, options.Run.Name,
+		options.Run.Port, commandString)
+	output, err = remoteExec(options, instance, cmd)
 	if err != nil {
-		log15.Crit("Couldn't run script in docker!", "error", err)
-		os.Exit(1)
+		// todo: ???
+	}
+	log15.Info("Docker run", "output", output)
+}
+func remoteExec(options Options, instance ec2.Instance, cmd string) (string, error) {
+	log15.Info("Remote exec", "cmd", cmd)
+	v := url.Values{}
+	v.Set("token", options.SshttpToken)
+	// use semi-colon for first two in case it doesn't exist which will return an error
+	v.Set("exec", cmd)
+	resp, err := http.Post(sshttpUrl(instance, "/v1/shell", v), "application/json", strings.NewReader("{}"))
+	if err != nil {
+		log15.Crit("Error executing remote command!", "error", err)
+		return "", err
 	}
 	defer resp.Body.Close()
-	body, err = ioutil.ReadAll(resp.Body) // I think there's a better way to do this so it doesn't read it into memory, io.Copy into nil or something
-	log15.Info("Docker run", "output", string(body))
-
+	body, err := ioutil.ReadAll(resp.Body) // I think there's a better way to do this so it doesn't read it into memory, io.Copy into nil or something
+	return string(body), err
 }
 
 func GetEc2(options Options) (*ec2.EC2, error) {
@@ -265,7 +285,11 @@ L:
 		return instance, err
 	}
 	log15.Info("Instance is running and sshttp is online.")
-	_, err = e.CreateTags([]string{instance.InstanceId}, []ec2.Tag{ec2.Tag{Key: "Name", Value: options.Run.Name}})
+	_, err = e.CreateTags([]string{instance.InstanceId},
+		[]ec2.Tag{
+			ec2.Tag{Key: "Name", Value: options.Run.Name},
+			ec2.Tag{Key: "Jocker", Value: "booyah"},
+		})
 	if err != nil {
 		log15.Crit("Error creating tags!", "error", err)
 		return instance, err

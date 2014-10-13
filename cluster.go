@@ -10,13 +10,13 @@ import (
 
 type Cluster struct {
 	Name      string     `json:"name"`
-	Instances []Instance `json:"instances"`
+	Instances map[string]*Instance `json:"instances"`
 }
 
 func NewCluster(name string) *Cluster {
 	c := &Cluster{}
 	c.Name = name
-	c.Instances = []Instance{}
+	c.Instances = make(map[string]*Instance)
 	return c
 }
 
@@ -40,16 +40,15 @@ func (c *Cluster) clusterFile() string {
 }
 
 func (c *Cluster) AddInstance(i Instance) {
-	c.Instances = append(c.Instances, i)
+	c.Instances[i.Name] = &i
+}
+
+func (c *Cluster) RemoveInstance(name string) {
+	delete(c.Instances, name)
 }
 
 func (c *Cluster) GetInstance(name string) *Instance {
-	for _, v := range c.Instances {
-		if v.Name == name {
-			return &v
-		}
-	}
-	return nil
+	return c.Instances[name]
 }
 
 func (c *Cluster) HasInstance(name string) bool {
@@ -57,7 +56,7 @@ func (c *Cluster) HasInstance(name string) bool {
 }
 
 func (c *Cluster) Save() error {
-	b, err := json.Marshal(c)
+	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		log15.Crit("Error marshalling cluster info", "error", err)
 		return err
