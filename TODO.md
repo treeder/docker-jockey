@@ -1,5 +1,1 @@
-- set token when writing upstart config for sshttp or write sshttp config file and read that when starting.
-- make an AMI that already has docker installed to make this faster. 
-- Sometimes VPC's dont make dns host names: http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/vpc-dns.html, should use the public IP or at least document it. 
-- store cluster info remotely (google drive?) for easy running from anywhere (and backup)
-- store uploaded code/binary somewhere (google drive?) for scaling with same version, etc. 
+Check here: https://trello.com/b/Tm4JUSjh/jocker

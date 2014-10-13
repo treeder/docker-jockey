@@ -119,7 +119,7 @@ func main() {
 		log15.Info("Instance already exists", "id", instance)
 	} else {
 		log15.Info("Launching new instance...")
-		instance, err := LaunchServer(e, options, options.Run.Name)
+		instance, err = LaunchServer(e, options, options.Run.Name)
 		if err != nil {
 			log15.Crit("Instance failed to launch", "error", err)
 			os.Exit(1)
