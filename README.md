@@ -2,8 +2,7 @@
 
 # Running
 
-Setup a jocker.config.json file with your aws credentials. 
-
+Copy example.jocker.config.json to jocker.config.json and fill it in with your aws credentials. 
 
 # Tips
 

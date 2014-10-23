@@ -1,0 +1,6 @@
+{
+  "aws_access_key": "XXX",
+  "aws_secret_key": "YYY",
+  "aws_subnet_id":  "subnet-31fa2846",
+  "aws_key_pair":   "mykeypair1"
+}
