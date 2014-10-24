@@ -101,9 +101,14 @@ func main() {
 
 	// zip it up
 	tarfile := "script.tar.gz"
-	out, err := exec.Command("tar", strings.Fields(fmt.Sprintf("-czf %v %v", tarfile, vsplit[0]))...).CombinedOutput()
+	// below doesn't work with directories with spaces
+//	fields := strings.Fields(fmt.Sprintf("-czf %v %v", tarfile, vsplit[0]))
+	fields := []string{}
+	fields = append(fields, "-czf", tarfile, "" + vsplit[0] + "")
+	log15.Info("fields", "fields", fields)
+	out, err := exec.Command("tar", fields...).CombinedOutput()
 	if err != nil {
-		log15.Crit("Error tarring", "error", err)
+		log15.Crit("Error tarring", "error", err, "out", string(out))
 		os.Exit(1)
 	}
 	log15.Info("Tar ran", "output", string(out))
