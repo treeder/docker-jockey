@@ -9,7 +9,7 @@ import (
 )
 
 type Cluster struct {
-	Name      string     `json:"name"`
+	Name      string               `json:"name"`
 	Instances map[string]*Instance `json:"instances"`
 }
 

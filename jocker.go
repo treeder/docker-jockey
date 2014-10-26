@@ -37,7 +37,7 @@ type Options struct {
 		// todo: should allow an isntance name to allow multiple containers on one instance (default is name already)
 		Name        string `goptions:"--name, mutexgroup='input', obligatory, description='Container name'"`
 		D           bool   `goptions:"-d"`
-		Port        string   `goptions:"-p, description='Port setup, eg: 0.0.0.0:8080:8080'"`
+		Port        string `goptions:"-p, description='Port setup, eg: 0.0.0.0:8080:8080'"`
 		Rm          bool   `goptions:"--rm"`
 		Interactive bool   `goptions:"-i, --interactive, description='Force removal'"`
 		Tty         bool   `goptions:"-t, --tty, description='Force removal'"`
@@ -57,6 +57,8 @@ func main() {
 		SshttpToken: "hello",
 		AwsKeyPair:  "mykeypair1",
 	}
+	options.Run.Port = "0.0.0.0:8080:8080"
+
 	// load from file first if it exists
 	// todo; should build this into goptions or make a new config lib that uses this + goptions
 	file, err := ioutil.ReadFile("jocker.config.json")
@@ -78,6 +80,10 @@ func main() {
 	command := remainder[1]
 	commandArgs := remainder[2:]
 	golog.Infoln("XXX", image, command, commandArgs)
+
+	if false {
+		os.Exit(0)
+	}
 
 	// load existing cluster info if it exists
 	cluster := LoadCluster("default")
@@ -101,10 +107,15 @@ func main() {
 
 	// zip it up
 	tarfile := "script.tar.gz"
+	err = os.Remove(tarfile)
+	if err != nil {
+		log15.Info("deleting tar", "err", err)
+	}
+
 	// below doesn't work with directories with spaces
-//	fields := strings.Fields(fmt.Sprintf("-czf %v %v", tarfile, vsplit[0]))
+	//	fields := strings.Fields(fmt.Sprintf("-czf %v %v", tarfile, vsplit[0]))
 	fields := []string{}
-	fields = append(fields, "-czf", tarfile, "" + vsplit[0] + "")
+	fields = append(fields, "-czf", tarfile, vsplit[0], ".") // dot added because of this: http://stackoverflow.com/a/18681628/105562
 	log15.Info("fields", "fields", fields)
 	out, err := exec.Command("tar", fields...).CombinedOutput()
 	if err != nil {
@@ -168,7 +179,7 @@ func main() {
 	}
 
 	// untar
-	cmd := "cd /jocker && mkdir script && tar -xf script.tar.gz --strip 1 --directory script"
+	cmd := "cd /jocker && rm -rf script && mkdir script && tar -xf script.tar.gz --strip 1 --directory script"
 	output, err := remoteExec(options, instance, cmd)
 	if err != nil {
 		// todo: ???
@@ -177,6 +188,7 @@ func main() {
 
 	// run the docker command! could setup an upstart script for it too if it's a service (optional)
 	log15.Info("Running script...")
+	// todo: If server was already running, we could maybe just do docker stop then docker start instead of rm then run.
 	cmd = fmt.Sprintf("docker stop %v ; docker rm %v ; cd /jocker/script && docker run -d --name %v -v /jocker/script:/usr/src/myapp -w /usr/src/myapp -p %v %v",
 		options.Run.Name, options.Run.Name, options.Run.Name,
 		options.Run.Port, commandString)
