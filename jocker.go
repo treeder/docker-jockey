@@ -196,7 +196,7 @@ func main() {
 	if err != nil {
 		// todo: ???
 	}
-	log15.Info("Docker run", "output", output)
+	log15.Info("Docker run", "output", output, "instance_id", instance.InstanceId, "host", instance.DNSName)
 }
 func remoteExec(options Options, instance ec2.Instance, cmd string) (string, error) {
 	log15.Info("Remote exec", "cmd", cmd)
