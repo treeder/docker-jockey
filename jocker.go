@@ -230,6 +230,11 @@ func GetInstanceInfo(e *ec2.EC2, instanceId string) (instance ec2.Instance, err 
 		log15.Crit("Couldn't get instance details", "error", err)
 		return instance, err
 	}
+	log15.Debug("getInsanceInfo", "response", iResp)
+	if len(iResp.Reservations) == 0 {
+		// instance no longer there
+		return instance, fmt.Errorf("Instance not found on aws.")
+	}
 	instance = iResp.Reservations[0].Instances[0]
 	return instance, err
 }
