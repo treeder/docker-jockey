@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/iron-io/golog" // todo: get rid of this usage
 	"github.com/mitchellh/goamz/aws"
 	"github.com/mitchellh/goamz/ec2"
 	"github.com/voxelbrain/goptions"
@@ -45,19 +44,19 @@ type Options struct {
 		Workdir     string `goptions:"-w, --workdir, obligatory, description='work dir inside container'"`
 		Remainder   goptions.Remainder
 	} `goptions:"run"`
-	Delete struct {
-		Path  string `goptions:"-n, --name, obligatory, description='Name of the entity to be deleted'"`
-		Force bool   `goptions:"-f, --force, description='Force removal'"`
-	} `goptions:"delete"`
+	Stop struct {
+		Time  int `goptions:"-t, --time, description='Number of seconds to wait for the container to stop before killing it. Default is 10 seconds.'"`
+		Remainder   goptions.Remainder
+	} `goptions:"stop"`
 }
 
 func main() {
 
-	options := Options{ // Default values go here
+	options := &Options{ // Default values go here
 		SshttpToken: "hello",
 		AwsKeyPair:  "mykeypair1",
 	}
-	options.Run.Port = "0.0.0.0:8080:8080"
+	options.Run.Port = "8080:8080" // default value
 
 	// load from file first if it exists
 	// todo; should build this into goptions or make a new config lib that uses this + goptions
@@ -65,32 +64,39 @@ func main() {
 	if err != nil {
 		log15.Info("No config file found.")
 	} else {
-		err = json.Unmarshal(file, &options)
+		err = json.Unmarshal(file, options)
 		if err != nil {
 			log15.Crit("Invalid config file!!!", "error:", err)
 			os.Exit(1)
 		}
 		//		log15.Debug("Results:", "jsoned", options)
 	}
-	goptions.ParseAndFail(&options)
-	golog.Infoln("REMAINDER:", options.Run.Remainder)
-	// parse remainder to get image and command. sudo docker run [OPTIONS] IMAGE[:TAG] [COMMAND] [ARG...]
-	remainder := options.Run.Remainder
-	image := remainder[0]
-	command := remainder[1]
-	commandArgs := remainder[2:]
-	golog.Infoln("XXX", image, command, commandArgs)
-
-	if false {
-		os.Exit(0)
-	}
+	goptions.ParseAndFail(options)
 
 	// load existing cluster info if it exists
 	cluster := LoadCluster("default")
 
+	switch options.Verb {
+		case "run":
+			Run(options, cluster)
+		case "stop":
+			Stop(options, cluster)
+	}
+
+
+}
+
+func Run(options *Options, cluster *Cluster) {
+	log15.Info("REMAINDER:", "remainder", options.Run.Remainder)
+	// parse remainder to get image and command. sudo docker run [OPTIONS] IMAGE[:TAG] [COMMAND] [ARG...]
+	remainder := options.Run.Remainder
+//	image := remainder[0]
+//	command := remainder[1]
+//	commandArgs := remainder[2:]
+
 	// join up the remainder and pass into userData string
 	commandString := strings.Join(remainder, " ")
-	golog.Infoln("Commandstring:", commandString)
+	log15.Info("Command", "string", commandString)
 
 	// Package up the entire directory (could parse -v to see which directory?)
 	//	filedir := filepath.Dir(command) // todo: in ruby or interpreted languages, this wouldn't be the file
@@ -107,7 +113,7 @@ func main() {
 
 	// zip it up
 	tarfile := "script.tar.gz"
-	err = os.Remove(tarfile)
+	err := os.Remove(tarfile)
 	if err != nil {
 		log15.Info("deleting tar", "err", err)
 	}
@@ -124,7 +130,7 @@ func main() {
 	}
 	log15.Info("Tar ran", "output", string(out))
 
-	e, err := GetEc2(options)
+	ec2i, err := GetEc2(options)
 	if err != nil {
 		return
 	}
@@ -134,7 +140,7 @@ func main() {
 	instOk := false
 	if cluster.HasInstance(options.Run.Name) {
 		ins := cluster.GetInstance(options.Run.Name)
-		instance, err = GetInstanceInfo(e, ins.InstanceId)
+		instance, err = GetInstanceInfo(ec2i, ins.InstanceId)
 		if err != nil {
 			log15.Warn("Instance not on AWS anymore.", "id", ins.InstanceId)
 			cluster.RemoveInstance(options.Run.Name)
@@ -149,12 +155,16 @@ func main() {
 	}
 	if !instOk {
 		log15.Info("Launching new instance...")
-		instance, err = LaunchServer(e, options, options.Run.Name)
+		instance, err = LaunchServer(ec2i, options, options.Run.Name)
 		if err != nil {
 			log15.Crit("Instance failed to launch", "error", err)
 			os.Exit(1)
 		}
-		cluster.AddInstance(Instance{Name: options.Run.Name, InstanceId: instance.InstanceId})
+		cluster.AddInstance(Instance{
+		Name: options.Run.Name,
+		InstanceId: instance.InstanceId,
+
+	})
 
 	}
 	err = cluster.Save()
@@ -172,7 +182,7 @@ func main() {
 	v := url.Values{}
 	v.Set("token", options.SshttpToken)
 	v.Set("path", "/jocker")
-	err = Upload(sshttpUrl(instance, "/v1/files", v), tarfile)
+	err = Upload(sshttpUrl(instance.DNSName, "/v1/files", v), tarfile)
 	if err != nil {
 		log15.Crit("Error uploading script!", "error", err)
 		os.Exit(1)
@@ -180,7 +190,7 @@ func main() {
 
 	// untar
 	cmd := "cd /jocker && rm -rf script && mkdir script && tar -xf script.tar.gz --strip 1 --directory script"
-	output, err := remoteExec(options, instance, cmd)
+	output, err := remoteExec(options, instance.DNSName, cmd)
 	if err != nil {
 		// todo: ???
 	}
@@ -192,19 +202,57 @@ func main() {
 	cmd = fmt.Sprintf("docker stop %v ; docker rm %v ; cd /jocker/script && docker run -d --name %v -v /jocker/script:/usr/src/myapp -w /usr/src/myapp -p %v %v",
 		options.Run.Name, options.Run.Name, options.Run.Name,
 		options.Run.Port, commandString)
-	output, err = remoteExec(options, instance, cmd)
+	output, err = remoteExec(options, instance.DNSName, cmd)
 	if err != nil {
 		// todo: ???
 	}
 	log15.Info("Docker run", "output", output, "instance_id", instance.InstanceId, "host", instance.DNSName)
 }
-func remoteExec(options Options, instance ec2.Instance, cmd string) (string, error) {
+
+func Stop(options *Options, cluster *Cluster) {
+	log15.Info("REMAINDER:", "remainder", options.Stop.Remainder)
+	// parse remainder to get image and command. sudo docker run [OPTIONS] IMAGE[:TAG] [COMMAND] [ARG...]
+	remainder := options.Stop.Remainder
+	if len(remainder) < 1 {
+		log15.Error("You need to specify a container.")
+		return
+	}
+	container := remainder[0]
+
+	imeta := cluster.GetInstance(container)
+	if imeta == nil {
+		log15.Info("Instance does not exist", "instance", container, "cluster", cluster)
+		return
+	}
+
+	cmd := fmt.Sprintf("docker stop %v", container)
+	output, err := remoteExec(options, imeta.Host, cmd)
+	if err != nil {
+		// todo: ???
+	}
+	log15.Info("docker stop", "output", output)
+
+	// todo: if there is another container running on this machine, don't terminate
+	// now terminate
+	ec2, err := GetEc2(options)
+	if err != nil {
+		return
+	}
+	resp, err := ec2.TerminateInstances([]string{imeta.InstanceId})
+	if err != nil {
+		log15.Error("Terminate instances", "error", err)
+	}
+	log15.Info("Terminate instances", "response", resp)
+}
+
+
+func remoteExec(options *Options, host, cmd string) (string, error) {
 	log15.Info("Remote exec", "cmd", cmd)
 	v := url.Values{}
 	v.Set("token", options.SshttpToken)
 	// use semi-colon for first two in case it doesn't exist which will return an error
 	v.Set("exec", cmd)
-	resp, err := http.Post(sshttpUrl(instance, "/v1/shell", v), "application/json", strings.NewReader("{}"))
+	resp, err := http.Post(sshttpUrl(host, "/v1/shell", v), "application/json", strings.NewReader("{}"))
 	if err != nil {
 		log15.Crit("Error executing remote command!", "error", err)
 		return "", err
@@ -214,7 +262,7 @@ func remoteExec(options Options, instance ec2.Instance, cmd string) (string, err
 	return string(body), err
 }
 
-func GetEc2(options Options) (*ec2.EC2, error) {
+func GetEc2(options *Options) (*ec2.EC2, error) {
 	auth, err := aws.GetAuth(options.AwsAccessKey, options.AwsSecretKey)
 	if err != nil {
 		log15.Crit("Error aws.GetAuth", "error", err)
@@ -239,7 +287,7 @@ func GetInstanceInfo(e *ec2.EC2, instanceId string) (instance ec2.Instance, err 
 	return instance, err
 }
 
-func LaunchServer(e *ec2.EC2, options Options, name string) (instance ec2.Instance, err error) {
+func LaunchServer(e *ec2.EC2, options *Options, name string) (instance ec2.Instance, err error) {
 
 	//	userData := []byte(`#cloud-config
 	//runcmd:
@@ -271,7 +319,7 @@ chmod +x sshttp
 	}
 	resp, err := e.RunInstances(&ec2Options)
 	if err != nil {
-		golog.Errorln(err)
+		log15.Error("Error running instances", "error", err)
 		return instance, err
 	}
 
@@ -319,19 +367,19 @@ L:
 	return instance, err
 }
 
-func sshttpUrlBase(i ec2.Instance) string {
-	return fmt.Sprintf("http://%v:%v", i.DNSName, sshttp_port)
+func sshttpUrlBase(host string) string {
+	return fmt.Sprintf("http://%v:%v", host, sshttp_port)
 }
 
-func sshttpUrl(i ec2.Instance, path string, v url.Values) string {
-	return fmt.Sprintf("%v%v?%v", sshttpUrlBase(i), path, v.Encode())
+func sshttpUrl(host, path string, v url.Values) string {
+	return fmt.Sprintf("%v%v?%v", sshttpUrlBase(host), path, v.Encode())
 }
 
 func checkIfUp(i ec2.Instance) bool {
 	log15.Info("Checking instance status", "state", i.State, "id", i.InstanceId)
 	// check if sshttp available
 	if i.DNSName != "" { // wait for it to get a public dns entry (takes a bit)
-		resp, err := http.Get(sshttpUrlBase(i))
+		resp, err := http.Get(sshttpUrlBase(i.DNSName))
 		if err != nil {
 			log15.Info("sshttp not available yet", "error", err)
 			return false

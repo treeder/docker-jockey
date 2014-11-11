@@ -5,7 +5,7 @@ Jocker is a command line tool that enables you to run docker commands as you wou
 up remotely on the cloud of your choice. I made this because I wanted to be able quickly take what I was working on
 locally in development and get it on a box somewhere that I could point things and people at.
 
-# Usage
+## Usage
 
 1. Copy example.jocker.config.json to jocker.config.json and fill it in with your aws credentials.
 
@@ -24,6 +24,14 @@ jocker run -i --name mygoprog -v "$(pwd)":/usr/src/myapp -w /usr/src/myapp -p 80
 This will fire up a machine in the cloud, get the docker image you specify, upload your code, then run it.
 
 If you run the command again and the machine is still running, it will only upload your code and run it (much faster).
+
+Run `docker stop CONTAINER_NAME` to stop the container and terminate the remote machine. 
+
+## Demo/Examples
+
+You can try the gotest and rubytest examples in the appropriate directory. Basically just make sure you have a jocker.config.json
+file then run dockerbuild.sh, then dockerrun.sh to run local, then jockerrun.sh to run remote. You can use the commands
+inside those shell files for reference.
 
 ## Todos
 
