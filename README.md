@@ -12,26 +12,34 @@ locally in development and get it on a box somewhere that I could point things a
 2. Then simply take your normal docker command, for instance:
 
 ```sh
-docker run -i --name mygoprog -v "$(pwd)":/usr/src/myapp -w /usr/src/myapp -p 8080:8080 treeder/golang-ubuntu:1.3.3on14.04 ./mygoprog
+dj run -i --name mygoprog -v "$(pwd)":/app -w /app -p 8080:8080 treeder/golang-ubuntu:1.3.3on14.04 ./mygoprog
 ```
 
-And change it to `jocker`:
+Where mygoprog is some program to run. 
+
+Then change docker to `dj`:
 
 ```sh
-jocker run -i --name mygoprog -v "$(pwd)":/usr/src/myapp -w /usr/src/myapp -p 8080:8080 treeder/golang-ubuntu:1.3.3on14.04 ./mygoprog
+dj run -i --name mygoprog -v "$(pwd)":/usr/src/myapp -w /usr/src/myapp -p 8080:8080 treeder/golang-ubuntu:1.3.3on14.04 ./mygoprog
 ```
 
 This will fire up a machine in the cloud, get the docker image you specify, upload your code, then run it.
 
 If you run the command again and the machine is still running, it will only upload your code and run it (much faster).
 
-Run `docker stop CONTAINER_NAME` to stop the container and terminate the remote machine. 
+Run `jocker stop CONTAINER_NAME` to stop the container and terminate the remote machine.
 
 ## Demo/Examples
 
 You can try the gotest and rubytest examples in the appropriate directory. Basically just make sure you have a jocker.config.json
 file then run dockerbuild.sh, then dockerrun.sh to run local, then jockerrun.sh to run remote. You can use the commands
 inside those shell files for reference.
+
+You can also run ready to go Docker images like:
+
+```sh
+dj run --name ironmq -p 8080:8080 iron/mq
+```
 
 ## Todos
 

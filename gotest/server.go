@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"log"
+	"net/http"
 )
 
 func main() {
@@ -13,7 +13,7 @@ func main() {
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "world")
+	fmt.Fprint(w, "Hello world!")
 }
 func ping(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "pong")

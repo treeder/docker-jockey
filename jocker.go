@@ -33,20 +33,20 @@ type Options struct {
 
 	Verb goptions.Verbs
 	Run  struct {
-		// todo: should allow an isntance name to allow multiple containers on one instance (default is name already)
+		// todo: should allow an instance name to allow multiple containers on one instance (default is name already)
 		Name        string `goptions:"--name, mutexgroup='input', obligatory, description='Container name'"`
 		D           bool   `goptions:"-d"`
 		Port        string `goptions:"-p, description='Port setup, eg: 0.0.0.0:8080:8080'"`
 		Rm          bool   `goptions:"--rm"`
 		Interactive bool   `goptions:"-i, --interactive, description='Force removal'"`
 		Tty         bool   `goptions:"-t, --tty, description='Force removal'"`
-		Volume      string `goptions:"-v, --volume, obligatory, description='Host dir : container dir'"`
-		Workdir     string `goptions:"-w, --workdir, obligatory, description='work dir inside container'"`
+		Volume      string `goptions:"-v, --volume, description='Host dir : container dir'"`
+		Workdir     string `goptions:"-w, --workdir, description='work dir inside container'"`
 		Remainder   goptions.Remainder
 	} `goptions:"run"`
 	Stop struct {
-		Time  int `goptions:"-t, --time, description='Number of seconds to wait for the container to stop before killing it. Default is 10 seconds.'"`
-		Remainder   goptions.Remainder
+		Time      int `goptions:"-t, --time, description='Number of seconds to wait for the container to stop before killing it. Default is 10 seconds.'"`
+		Remainder goptions.Remainder
 	} `goptions:"stop"`
 }
 
@@ -77,12 +77,11 @@ func main() {
 	cluster := LoadCluster("default")
 
 	switch options.Verb {
-		case "run":
-			Run(options, cluster)
-		case "stop":
-			Stop(options, cluster)
+	case "run":
+		Run(options, cluster)
+	case "stop":
+		Stop(options, cluster)
 	}
-
 
 }
 
@@ -90,9 +89,10 @@ func Run(options *Options, cluster *Cluster) {
 	log15.Info("REMAINDER:", "remainder", options.Run.Remainder)
 	// parse remainder to get image and command. sudo docker run [OPTIONS] IMAGE[:TAG] [COMMAND] [ARG...]
 	remainder := options.Run.Remainder
-//	image := remainder[0]
-//	command := remainder[1]
-//	commandArgs := remainder[2:]
+	log15.Info("remainder", "r", remainder)
+	//	image := remainder[0]
+	//	command := remainder[1]
+	//	commandArgs := remainder[2:]
 
 	// join up the remainder and pass into userData string
 	commandString := strings.Join(remainder, " ")
@@ -104,31 +104,37 @@ func Run(options *Options, cluster *Cluster) {
 	//	maybe just use current working dir instead of trying to figure it out, just make that a documented limitation
 	//	or the -v would probably be best?  Must include -v
 	//
-	vsplit := strings.Split(options.Run.Volume, ":")
-	log15.Info("dirs", "v0", vsplit[0], "v1", vsplit[1])
-
 	log15.Info("env", "env", os.Getenv("PATH"))
 
-	// Save the last directory
+	tarfile := ""
+	if len(remainder) > 1 {
+		if options.Run.Volume != "" {
+			// Then tar/upload code, otherwise nothing to run, just image
+			vsplit := strings.Split(options.Run.Volume, ":")
+			log15.Info("dirs", "v0", vsplit[0], "v1", vsplit[1])
 
-	// zip it up
-	tarfile := "script.tar.gz"
-	err := os.Remove(tarfile)
-	if err != nil {
-		log15.Info("deleting tar", "err", err)
-	}
+			// Save the last directory
 
-	// below doesn't work with directories with spaces
-	//	fields := strings.Fields(fmt.Sprintf("-czf %v %v", tarfile, vsplit[0]))
-	fields := []string{}
-	fields = append(fields, "-czf", tarfile, vsplit[0], ".") // dot added because of this: http://stackoverflow.com/a/18681628/105562
-	log15.Info("fields", "fields", fields)
-	out, err := exec.Command("tar", fields...).CombinedOutput()
-	if err != nil {
-		log15.Crit("Error tarring", "error", err, "out", string(out))
-		os.Exit(1)
+			// zip it up
+			tarfile = "script.tar.gz"
+			err := os.Remove(tarfile)
+			if err != nil {
+				log15.Info("deleting tar", "err", err)
+			}
+
+			// below doesn't work with directories with spaces
+			//	fields := strings.Fields(fmt.Sprintf("-czf %v %v", tarfile, vsplit[0]))
+			fields := []string{}
+			fields = append(fields, "-czf", tarfile, vsplit[0], ".") // dot added because of this: http://stackoverflow.com/a/18681628/105562
+			log15.Info("fields", "fields", fields)
+			out, err := exec.Command("tar", fields...).CombinedOutput()
+			if err != nil {
+				log15.Crit("Error tarring", "error", err, "out", string(out))
+				os.Exit(1)
+			}
+			log15.Info("Tar ran", "output", string(out))
+		}
 	}
-	log15.Info("Tar ran", "output", string(out))
 
 	ec2i, err := GetEc2(options)
 	if err != nil {
@@ -161,10 +167,9 @@ func Run(options *Options, cluster *Cluster) {
 			os.Exit(1)
 		}
 		cluster.AddInstance(Instance{
-		Name: options.Run.Name,
-		InstanceId: instance.InstanceId,
-
-	})
+			Name:       options.Run.Name,
+			InstanceId: instance.InstanceId,
+		})
 
 	}
 	err = cluster.Save()
@@ -178,33 +183,50 @@ func Run(options *Options, cluster *Cluster) {
 	// Now we're running so let's upload script and run it! upload via sshttp
 	// http://stackoverflow.com/questions/20205796/golang-post-data-using-the-content-type-multipart-form-data
 
-	log15.Info("Uploading script...")
-	v := url.Values{}
-	v.Set("token", options.SshttpToken)
-	v.Set("path", "/jocker")
-	err = Upload(sshttpUrl(instance.DNSName, "/v1/files", v), tarfile)
-	if err != nil {
-		log15.Crit("Error uploading script!", "error", err)
-		os.Exit(1)
-	}
+	if tarfile != "" {
+		log15.Info("Uploading script...")
+		v := url.Values{}
+		v.Set("token", options.SshttpToken)
+		v.Set("path", "/jocker")
+		err = Upload(sshttpUrl(instance.DNSName, "/v1/files", v), tarfile)
+		if err != nil {
+			log15.Crit("Error uploading script!", "error", err)
+			os.Exit(1)
+		}
 
-	// untar
-	cmd := "cd /jocker && rm -rf script && mkdir script && tar -xf script.tar.gz --strip 1 --directory script"
-	output, err := remoteExec(options, instance.DNSName, cmd)
-	if err != nil {
-		// todo: ???
+		// untar
+		cmd := "cd /jocker && rm -rf script && mkdir script && tar -xf script.tar.gz --strip 1 --directory script"
+		output, err := remoteExec(options, instance.DNSName, cmd)
+		if err != nil {
+			// todo: ???
+		}
+		log15.Info("Untar run", "output", output)
 	}
-	log15.Info("Untar run", "output", output)
 
 	// run the docker command! could setup an upstart script for it too if it's a service (optional)
 	log15.Info("Running script...")
 	// todo: If server was already running, we could maybe just do docker stop then docker start instead of rm then run.
-	cmd = fmt.Sprintf("docker stop %v ; docker rm %v ; cd /jocker/script && docker run -d --name %v -v /jocker/script:/usr/src/myapp -w /usr/src/myapp -p %v %v",
-		options.Run.Name, options.Run.Name, options.Run.Name,
-		options.Run.Port, commandString)
-	output, err = remoteExec(options, instance.DNSName, cmd)
+
+	// todo: drop Sprintf's where not needed
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("docker stop %v ; docker rm %v ;", options.Run.Name, options.Run.Name))
+	if options.Run.Volume != "" {
+		// if no volume, then the image is probably already good to go
+		// TODO: should maybe check command instead
+		buffer.WriteString(fmt.Sprintf(" cd /jocker/script && "))
+	}
+	buffer.WriteString(fmt.Sprintf(" docker run -d --name %v", options.Run.Name))
+	if options.Run.Volume != "" {
+		// todo: change to my app
+		buffer.WriteString(fmt.Sprintf(" -v /jocker/script:/usr/src/myapp -w /usr/src/myapp"))
+	}
+	buffer.WriteString(fmt.Sprintf(" -p %v %v",
+		options.Run.Port, commandString))
+
+	cmd := buffer.String()
+	output, err := remoteExec(options, instance.DNSName, cmd)
 	if err != nil {
-		// todo: ???
+		log15.Error("Docker run failed!", "error", err, "output", output, "instance_id", instance.InstanceId, "host", instance.DNSName)
 	}
 	log15.Info("Docker run", "output", output, "instance_id", instance.InstanceId, "host", instance.DNSName)
 }
@@ -244,7 +266,6 @@ func Stop(options *Options, cluster *Cluster) {
 	}
 	log15.Info("Terminate instances", "response", resp)
 }
-
 
 func remoteExec(options *Options, host, cmd string) (string, error) {
 	log15.Info("Remote exec", "cmd", cmd)

@@ -72,6 +72,5 @@ func (c *Cluster) Save() error {
 type Instance struct {
 	Name       string `json:"name"` // corresponding to container. This isn't actually right though since one instance might run many containers
 	InstanceId string `json:"instance_id"`
-	Host string `json:"host"`
+	Host       string `json:"host"`
 }
-

@@ -1,3 +1,6 @@
 .idea/
 jocker.config.json
 *.iml
+jocker.cluster.*.json
+script.tar.gz
+jocker
