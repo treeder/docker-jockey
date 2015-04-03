@@ -49,3 +49,10 @@ The task list for this project is here: https://trello.com/b/Tm4JUSjh/jocker
 
 - For Ruby projects, be sure to run `bundle install --deployment` to ensure gems are packaged up.
 
+## Building
+
+```
+go build -o dj
+```
+
+
