@@ -1,6 +1,7 @@
 .idea/
-jocker.config.json
+dj.config.json
 *.iml
-jocker.cluster.*.json
+dj.cluster.*.json
 script.tar.gz
-jocker
+dj
+docker-jockey

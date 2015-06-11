@@ -36,7 +36,7 @@ func LoadCluster(name string) *Cluster {
 }
 
 func (c *Cluster) clusterFile() string {
-	return fmt.Sprintf("jocker.cluster.%v.json", c.Name)
+	return fmt.Sprintf("dj.cluster.%v.json", c.Name)
 }
 
 func (c *Cluster) AddInstance(i Instance) {

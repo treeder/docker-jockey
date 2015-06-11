@@ -60,7 +60,7 @@ func main() {
 
 	// load from file first if it exists
 	// todo; should build this into goptions or make a new config lib that uses this + goptions
-	file, err := ioutil.ReadFile("jocker.config.json")
+	file, err := ioutil.ReadFile("dj.config.json")
 	if err != nil {
 		log15.Info("No config file found.")
 	} else {
@@ -187,7 +187,7 @@ func Run(options *Options, cluster *Cluster) {
 		log15.Info("Uploading script...")
 		v := url.Values{}
 		v.Set("token", options.SshttpToken)
-		v.Set("path", "/jocker")
+		v.Set("path", "/dj")
 		err = Upload(sshttpUrl(instance.DNSName, "/v1/files", v), tarfile)
 		if err != nil {
 			log15.Crit("Error uploading script!", "error", err)
@@ -195,7 +195,7 @@ func Run(options *Options, cluster *Cluster) {
 		}
 
 		// untar
-		cmd := "cd /jocker && rm -rf script && mkdir script && tar -xf script.tar.gz --strip 1 --directory script"
+		cmd := "cd /dj && rm -rf script && mkdir script && tar -xf script.tar.gz --strip 1 --directory script"
 		output, err := remoteExec(options, instance.DNSName, cmd)
 		if err != nil {
 			// todo: ???
@@ -213,12 +213,12 @@ func Run(options *Options, cluster *Cluster) {
 	if options.Run.Volume != "" {
 		// if no volume, then the image is probably already good to go
 		// TODO: should maybe check command instead
-		buffer.WriteString(fmt.Sprintf(" cd /jocker/script && "))
+		buffer.WriteString(fmt.Sprintf(" cd /dj/script && "))
 	}
 	buffer.WriteString(fmt.Sprintf(" docker run -d --name %v", options.Run.Name))
 	if options.Run.Volume != "" {
 		// todo: change to my app
-		buffer.WriteString(fmt.Sprintf(" -v /jocker/script:/usr/src/myapp -w /usr/src/myapp"))
+		buffer.WriteString(fmt.Sprintf(" -v /dj/script:/usr/src/myapp -w /usr/src/myapp"))
 	}
 	buffer.WriteString(fmt.Sprintf(" -p %v %v",
 		options.Run.Port, commandString))
@@ -320,8 +320,8 @@ func LaunchServer(e *ec2.EC2, options *Options, name string) (instance ec2.Insta
 echo "Docker Jockey is spinning! And the time is now $(date -R)!"
 echo "Current dir: $(pwd)"
 curl -sSL https://get.docker.io/ubuntu/ | sudo sh
-mkdir /jocker
-chmod 777 /jocker
+mkdir /dj
+chmod 777 /dj
 curl -L -O https://github.com/treeder/sshttp/releases/download/v0.0.1/sshttp
 chmod +x sshttp
 ./sshttp -t hello
@@ -379,7 +379,7 @@ L:
 	_, err = e.CreateTags([]string{instance.InstanceId},
 		[]ec2.Tag{
 			ec2.Tag{Key: "Name", Value: options.Run.Name},
-			ec2.Tag{Key: "Jocker", Value: "booyah"},
+			ec2.Tag{Key: "dj", Value: "booyah"},
 		})
 	if err != nil {
 		log15.Crit("Error creating tags!", "error", err)
