@@ -1,4 +1,4 @@
 #!/bin/sh
 
 # dj requires to escape the single quotes for now
-../dj run -i --rm --name rubyrun -v "$(pwd)":/usr/src/myapp -w /usr/src/myapp ruby:2 sh -c \'ruby yo.rb\'
+../dj run -i --name rubyrun -v "$(pwd)":/app -w /app google/ruby sh -c \'ruby sinatra.rb\'

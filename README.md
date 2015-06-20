@@ -12,7 +12,7 @@ locally in development and get it on a box somewhere that I could point things a
 2. Then simply take your normal docker command, for instance:
 
 ```sh
-dj run -i --name mygoprog -v "$(pwd)":/app -w /app -p 8080:8080 treeder/golang-ubuntu:1.3.3on14.04 ./mygoprog
+docker run -i --name mygoprog -v "$(pwd)":/app -w /app -p 8080:8080 treeder/golang-ubuntu:1.4.2on14.04 ./mygoprog
 ```
 
 Where mygoprog is some program to run. 
@@ -20,7 +20,7 @@ Where mygoprog is some program to run.
 Then change docker to `dj`:
 
 ```sh
-dj run -i --name mygoprog -v "$(pwd)":/usr/src/myapp -w /usr/src/myapp -p 8080:8080 treeder/golang-ubuntu:1.3.3on14.04 ./mygoprog
+dj run -i --name mygoprog -v "$(pwd)":/app -w /app -p 8080:8080 treeder/golang-ubuntu:1.4.2on14.04 ./mygoprog
 ```
 
 This will fire up a machine in the cloud, get the docker image you specify, upload your code, then run it.
@@ -32,14 +32,13 @@ Run `dj stop CONTAINER_NAME` to stop the container and terminate the remote mach
 ## Demo/Examples
 
 You can try the gotest and rubytest examples in the appropriate directory. Basically just make sure you have a 
-dj.config.json
-file then run dockerbuild.sh, then dockerrun.sh to run local, then djrun.sh to run remote. You can use the commands
-inside those shell files for reference.
+`dj.config.json` file, then run dockerbuild.sh, then dockerrun.sh to run local, then djrun.sh to run remote. 
+You can use the commands inside those shell files for reference.
 
 You can also run ready to go Docker images like:
 
 ```sh
-dj run --name ironmq -p 8080:8080 iron/mq
+dj run --name sinatra -p 8080:8080 treeder/sinatra
 ```
 
 ## Todos
@@ -48,7 +47,7 @@ The task list for this project is here: https://trello.com/b/Tm4JUSjh/jocker
 
 ## Tips
 
-- For Ruby projects, be sure to run `bundle install --deployment` to ensure gems are packaged up.
+- For Ruby projects, be sure to run `bundle install --standalone` to ensure gems are packaged up.
 
 ## Building
 
