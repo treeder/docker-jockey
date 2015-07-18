@@ -17,10 +17,14 @@ docker run -i --name mygoprog -v "$(pwd)":/app -w /app -p 8080:8080 treeder/gola
 
 Where mygoprog is some program to run. 
 
+dj adds all the boilerplate for you to shorten things down:
+
+
+
 Then change docker to `dj`:
 
 ```sh
-dj run -i --name mygoprog -v "$(pwd)":/app -w /app -p 8080:8080 treeder/golang-ubuntu:1.4.2on14.04 ./mygoprog
+dj deploy -i --name mygoprog -v "$(pwd)":/app -w /app -p 8080:8080 treeder/golang-ubuntu:1.4.2on14.04 ./mygoprog
 ```
 
 This will fire up a machine in the cloud, get the docker image you specify, upload your code, then run it.

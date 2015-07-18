@@ -34,7 +34,7 @@ type Options struct {
 	Verb goptions.Verbs
 	Run  struct {
 		// todo: should allow an instance name to allow multiple containers on one instance (default is name already)
-		Name        string `goptions:"--name, mutexgroup='input', obligatory, description='Container name'"`
+		Name        string `goptions:"--name, description='Container name'"`
 		D           bool   `goptions:"-d"`
 		Port        string `goptions:"-p, description='Port setup, eg: 0.0.0.0:8080:8080'"`
 		Rm          bool   `goptions:"--rm"`
@@ -44,6 +44,18 @@ type Options struct {
 		Workdir     string `goptions:"-w, --workdir, description='work dir inside container'"`
 		Remainder   goptions.Remainder
 	} `goptions:"run"`
+	Deploy struct {
+		// todo: should allow an instance name to allow multiple containers on one instance (default is name already)
+		Name        string `goptions:"--name, mutexgroup='input', obligatory, description='Container name'"`
+		D           bool   `goptions:"-d"`
+		Port        string `goptions:"-p, description='Port setup, eg: 0.0.0.0:8080:8080'"`
+		Rm          bool   `goptions:"--rm"`
+		Interactive bool   `goptions:"-i, --interactive, description='Force removal'"`
+		Tty         bool   `goptions:"-t, --tty, description='Force removal'"`
+		Volume      string `goptions:"-v, --volume, description='Host dir : container dir'"`
+		Workdir     string `goptions:"-w, --workdir, description='work dir inside container'"`
+		Remainder   goptions.Remainder
+	} `goptions:"deploy"`
 	Stop struct {
 		Time      int `goptions:"-t, --time, description='Number of seconds to wait for the container to stop before killing it. Default is 10 seconds.'"`
 		Remainder goptions.Remainder
@@ -57,6 +69,15 @@ func main() {
 		AwsKeyPair:  "mykeypair1",
 	}
 	options.Run.Port = "8080:8080" // default value
+	options.Run.Rm = true
+	wd, err := os.Getwd()
+	if err != nil {
+		log15.Crit("Couldn't get currentw working dir", "error", err)
+		os.Exit(1)
+	}
+	options.Run.Volume = wd + ":/app"
+	options.Run.Workdir = "/app"
+	options.Deploy.Port = "8080:8080"
 
 	// load from file first if it exists
 	// todo; should build this into goptions or make a new config lib that uses this + goptions
@@ -79,6 +100,8 @@ func main() {
 	switch options.Verb {
 	case "run":
 		Run(options, cluster)
+	case "deploy":
+		Deploy(options, cluster)
 	case "stop":
 		Stop(options, cluster)
 	}
@@ -86,6 +109,21 @@ func main() {
 }
 
 func Run(options *Options, cluster *Cluster) {
+	fields := []string{"run"}
+	fields = append(fields, "--rm", "-v", options.Run.Volume, "-w", options.Run.Workdir, "-p", options.Run.Port)
+	fields = append(fields, options.Run.Remainder...)
+	fmt.Println(fields)
+	cmd := exec.Command("docker", fields...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	//	out, err := exec.Command("pwd").CombinedOutput()
+	err := cmd.Run()
+	if err != nil {
+		log15.Error("Error occured", "error", err)
+	}
+}
+
+func Deploy(options *Options, cluster *Cluster) {
 	log15.Info("REMAINDER:", "remainder", options.Run.Remainder)
 	// parse remainder to get image and command. sudo docker run [OPTIONS] IMAGE[:TAG] [COMMAND] [ARG...]
 	remainder := options.Run.Remainder
