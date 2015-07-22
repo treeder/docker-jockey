@@ -15,7 +15,7 @@ locally in development and get it on a box somewhere that I could point things a
 docker run -i --name mygoprog -v "$(pwd)":/app -w /app -p 8080:8080 treeder/golang-ubuntu:1.4.2on14.04 ./mygoprog
 ```
 
-Where mygoprog is some program to run. 
+Where mygoprog is some program to run.
 
 dj adds all the boilerplate for you to shorten things down:
 
@@ -35,8 +35,8 @@ Run `dj stop CONTAINER_NAME` to stop the container and terminate the remote mach
 
 ## Demo/Examples
 
-You can try the gotest and rubytest examples in the appropriate directory. Basically just make sure you have a 
-`dj.config.json` file, then run dockerbuild.sh, then dockerrun.sh to run local, then djrun.sh to run remote. 
+You can try the gotest and rubytest examples in the appropriate directory. Basically just make sure you have a
+`dj.config.json` file, then run dockerbuild.sh, then dockerrun.sh to run local, then djrun.sh to run remote.
 You can use the commands inside those shell files for reference.
 
 You can also run ready to go Docker images like:
@@ -59,4 +59,8 @@ The task list for this project is here: https://trello.com/b/Tm4JUSjh/jocker
 go build -o dj
 ```
 
+Then copy to system to test:
 
+```
+sudo cp dj /usr/local/bin/dj
+```

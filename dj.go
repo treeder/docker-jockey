@@ -21,6 +21,7 @@ import (
 
 var (
 	sshttp_port = 8022
+	Version     = "0.0.5"
 )
 
 type Options struct {
@@ -34,6 +35,7 @@ type Options struct {
 	Verb goptions.Verbs
 	Run  struct {
 		// todo: should allow an instance name to allow multiple containers on one instance (default is name already)
+		On          string `goptions:"--on, description='Which cloud to run this on. Omit if want to run locally.'"`
 		Name        string `goptions:"--name, description='Container name'"`
 		D           bool   `goptions:"-d"`
 		Port        string `goptions:"-p, description='Port setup, eg: 0.0.0.0:8080:8080'"`
@@ -44,27 +46,23 @@ type Options struct {
 		Workdir     string `goptions:"-w, --workdir, description='work dir inside container'"`
 		Remainder   goptions.Remainder
 	} `goptions:"run"`
-	Deploy struct {
-		// todo: should allow an instance name to allow multiple containers on one instance (default is name already)
-		Name        string `goptions:"--name, mutexgroup='input', obligatory, description='Container name'"`
-		D           bool   `goptions:"-d"`
-		Port        string `goptions:"-p, description='Port setup, eg: 0.0.0.0:8080:8080'"`
-		Rm          bool   `goptions:"--rm"`
-		Interactive bool   `goptions:"-i, --interactive, description='Force removal'"`
-		Tty         bool   `goptions:"-t, --tty, description='Force removal'"`
-		Volume      string `goptions:"-v, --volume, description='Host dir : container dir'"`
-		Workdir     string `goptions:"-w, --workdir, description='work dir inside container'"`
-		Remainder   goptions.Remainder
-	} `goptions:"deploy"`
 	Stop struct {
 		Time      int `goptions:"-t, --time, description='Number of seconds to wait for the container to stop before killing it. Default is 10 seconds.'"`
 		Remainder goptions.Remainder
 	} `goptions:"stop"`
+	Ssh struct {
+		Name      string `goptions:"--name, description='Container name'", obligatory`
+		Remainder goptions.Remainder
+	} `goptions:"ssh"`
+	Version struct {
+		Remainder goptions.Remainder
+	} `goptions:"version"`
 }
 
 func main() {
 
-	options := &Options{ // Default values go here
+	// Default values go here
+	options := &Options{
 		SshttpToken: "hello",
 		AwsKeyPair:  "mykeypair1",
 	}
@@ -77,7 +75,6 @@ func main() {
 	}
 	options.Run.Volume = wd + ":/app"
 	options.Run.Workdir = "/app"
-	options.Deploy.Port = "8080:8080"
 
 	// load from file first if it exists
 	// todo; should build this into goptions or make a new config lib that uses this + goptions
@@ -100,17 +97,62 @@ func main() {
 	switch options.Verb {
 	case "run":
 		Run(options, cluster)
-	case "deploy":
-		Deploy(options, cluster)
 	case "stop":
 		Stop(options, cluster)
+	case "ssh":
+		Ssh(options, cluster)
+	case "version":
+		fmt.Println(Version)
 	}
 
 }
 
+func Ssh(options *Options, cluster *Cluster) {
+	ec2i, err := GetEc2(options)
+	if err != nil {
+		return
+	}
+	ins := cluster.GetInstance(options.Ssh.Name)
+	instance, err := GetInstanceInfo(ec2i, ins.InstanceId)
+	if err != nil {
+		log15.Warn("Instance not on AWS anymore.", "id", ins.InstanceId)
+		cluster.RemoveInstance(options.Ssh.Name)
+	} else {
+		if instance.State.Code == 16 { // running code: http://docs.aws.amazon.com/AWSEC2/latest/APIReference/ApiReference-ItemType-InstanceStateType.html
+			// instOk = true
+			log15.Info("Instance already exists, using it.", "id", instance)
+		} else {
+			log15.Warn("Instance no longer in running state")
+		}
+	}
+	cmd := strings.Join(options.Ssh.Remainder, " ")
+	output, err := remoteExec(options, instance.DNSName, cmd)
+	if err != nil {
+		log15.Error("Remote command failed!", "error", err, "output", output, "instance_id", instance.InstanceId, "host", instance.DNSName)
+	}
+	log15.Info("Remote cmd successful.", "output", output)
+}
+
 func Run(options *Options, cluster *Cluster) {
+
+	if options.Run.On == "aws" {
+		Deploy(options, cluster)
+	} else {
+		RunLocal(options, cluster)
+	}
+
+}
+
+func RunLocal(options *Options, cluster *Cluster) {
 	fields := []string{"run"}
-	fields = append(fields, "--rm", "-v", options.Run.Volume, "-w", options.Run.Workdir, "-p", options.Run.Port)
+	fields = append(fields, "-v", options.Run.Volume, "-w", options.Run.Workdir, "-p", options.Run.Port)
+	fields = append(fields, "--rm", "-i")
+	if options.Run.Tty {
+		fields = append(fields, "-t")
+	}
+	if options.Run.Name != "" {
+		fields = append(fields, "--name", options.Run.Name)
+	}
 	fields = append(fields, options.Run.Remainder...)
 	fmt.Println(fields)
 	cmd := exec.Command("docker", fields...)
@@ -144,7 +186,7 @@ func Deploy(options *Options, cluster *Cluster) {
 	//
 	log15.Info("env", "env", os.Getenv("PATH"))
 
-	tarfile := ""
+	zipfile := ""
 	if len(remainder) > 1 {
 		if options.Run.Volume != "" {
 			// Then tar/upload code, otherwise nothing to run, just image
@@ -154,23 +196,27 @@ func Deploy(options *Options, cluster *Cluster) {
 			// Save the last directory
 
 			// zip it up
-			tarfile = "script.tar.gz"
-			err := os.Remove(tarfile)
+			zipfile = "app.zip"
+			err := os.Remove(zipfile)
 			if err != nil {
-				log15.Info("deleting tar", "err", err)
+				log15.Info("deleting zip", "err", err)
 			}
 
 			// below doesn't work with directories with spaces
 			//	fields := strings.Fields(fmt.Sprintf("-czf %v %v", tarfile, vsplit[0]))
 			fields := []string{}
-			fields = append(fields, "-czf", tarfile, vsplit[0], ".") // dot added because of this: http://stackoverflow.com/a/18681628/105562
+			// was using this for the tar file: vsplit[0], but it was messing up
+			// fields = append(fields, "-czf", tarfile, ".", "--exclude='" + tarfile + "'") // dot added because of this: http://stackoverflow.com/a/18681628/105562
+			// log15.Info("fields", "fields", fields)
+			// out, err := exec.Command("tar", fields...).CombinedOutput()
+			fields = append(fields, "-r", zipfile, ".") // dot added because of this: http://stackoverflow.com/a/18681628/105562
 			log15.Info("fields", "fields", fields)
-			out, err := exec.Command("tar", fields...).CombinedOutput()
+			out, err := exec.Command("zip", fields...).CombinedOutput()
 			if err != nil {
-				log15.Crit("Error tarring", "error", err, "out", string(out))
+				log15.Crit("Error zipping", "error", err, "out", string(out))
 				os.Exit(1)
 			}
-			log15.Info("Tar ran", "output", string(out))
+			log15.Info("Zip ran", "output", string(out))
 		}
 	}
 
@@ -221,22 +267,22 @@ func Deploy(options *Options, cluster *Cluster) {
 	// Now we're running so let's upload script and run it! upload via sshttp
 	// http://stackoverflow.com/questions/20205796/golang-post-data-using-the-content-type-multipart-form-data
 
-	if tarfile != "" {
+	if zipfile != "" {
 		log15.Info("Uploading script...")
 		v := url.Values{}
 		v.Set("token", options.SshttpToken)
 		v.Set("path", "/dj")
-		err = Upload(sshttpUrl(instance.DNSName, "/v1/files", v), tarfile)
+		err = Upload(sshttpUrl(instance.DNSName, "/v1/files", v), zipfile)
 		if err != nil {
 			log15.Crit("Error uploading script!", "error", err)
 			os.Exit(1)
 		}
 
 		// untar
-		cmd := "cd /dj && rm -rf script && mkdir script && tar -xf script.tar.gz --strip 1 --directory script"
+		cmd := "cd /dj && rm -rf app && mkdir app && unzip app.zip -d app/"
 		output, err := remoteExec(options, instance.DNSName, cmd)
 		if err != nil {
-			// todo: ???
+			log15.Error("Remote command failed!", "error", err, "output", output, "instance_id", instance.InstanceId, "host", instance.DNSName)
 		}
 		log15.Info("Untar run", "output", output)
 	}
@@ -251,12 +297,12 @@ func Deploy(options *Options, cluster *Cluster) {
 	if options.Run.Volume != "" {
 		// if no volume, then the image is probably already good to go
 		// TODO: should maybe check command instead
-		buffer.WriteString(fmt.Sprintf(" cd /dj/script && "))
+		buffer.WriteString(fmt.Sprintf(" cd /dj/app && "))
 	}
 	buffer.WriteString(fmt.Sprintf(" docker run -d --name %v", options.Run.Name))
 	if options.Run.Volume != "" {
 		// todo: change to my app
-		buffer.WriteString(fmt.Sprintf(" -v /dj/script:/usr/src/myapp -w /usr/src/myapp"))
+		buffer.WriteString(fmt.Sprintf(" -v /dj/app:/app -w /app"))
 	}
 	buffer.WriteString(fmt.Sprintf(" -p %v %v",
 		options.Run.Port, commandString))
@@ -357,6 +403,7 @@ func LaunchServer(e *ec2.EC2, options *Options, name string) (instance ec2.Insta
 	userDataString := `#!/bin/sh
 echo "Docker Jockey is spinning! And the time is now $(date -R)!"
 echo "Current dir: $(pwd)"
+apt-get install unzip
 curl -sSL https://get.docker.io/ubuntu/ | sudo sh
 mkdir /dj
 chmod 777 /dj

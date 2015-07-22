@@ -5,3 +5,4 @@ dj.cluster.*.json
 script.tar.gz
 dj
 docker-jockey
+app.zip
